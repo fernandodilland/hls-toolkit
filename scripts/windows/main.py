@@ -8,10 +8,10 @@ def select_file():
     root = Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(
-        title="Selecciona el archivo de video",
+        title="Select the video file",
         filetypes=[
-            ("Archivos de video", "*.mp4 *.mkv *.avi *.mov *.flv *.wmv *.webm *.ts"),
-            ("Todos los archivos", "*.*"),
+            ("Video files", "*.mp4 *.mkv *.avi *.mov *.flv *.wmv *.webm *.ts"),
+            ("All files", "*.*"),
         ],
     )
     root.destroy()
@@ -20,7 +20,7 @@ def select_file():
 def select_destination():
     root = Tk()
     root.withdraw()
-    folder_path = filedialog.askdirectory(title="Selecciona la carpeta de destino")
+    folder_path = filedialog.askdirectory(title="Select the destination folder")
     root.destroy()
     return folder_path
 
@@ -37,16 +37,16 @@ def get_video_info(input_path):
     try:
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode().strip().split('\n')
         if len(output) < 3:
-            raise ValueError("ffprobe output incomplete. Asegúrate de que el archivo contiene video y duración.")
+            raise ValueError("Incomplete ffprobe output. Ensure the file contains video and duration.")
         width = int(output[0])
         height = int(output[1])
         duration_str = output[2]
         if duration_str.lower() == "n/a":
-            raise ValueError("Duración no disponible en el archivo de video.")
+            raise ValueError("Duration not available in the video file.")
         duration = float(duration_str)
         return width, height, duration
     except Exception as e:
-        messagebox.showerror("Error", f"No se pudo obtener información del video: {e}")
+        messagebox.showerror("Error", f"Could not retrieve video information: {e}")
         sys.exit(1)
 
 def determine_resolutions(max_height):
@@ -61,7 +61,7 @@ def transcode_video(input_path, output_dir, resolutions):
         playlist_path = res_dir / "index.m3u8"
         segment_path = res_dir / "segment_%03d.ts"
         
-        # Determinar bitrate basado en la resolución
+        # Determine bitrate based on resolution
         bitrate = {
             144: "800k",
             240: "400k",
@@ -77,8 +77,8 @@ def transcode_video(input_path, output_dir, resolutions):
             "ffmpeg",
             "-i", input_path,
             "-vf", f"scale=-2:{res}",
-            "-pix_fmt", "yuv420p",  # Forzar a 8 bits
-            "-profile:v", "high",   # Usar un perfil alto de H.264
+            "-pix_fmt", "yuv420p",  # Force to 8 bits
+            "-profile:v", "high",   # Use a high H.264 profile
             "-c:a", "aac",
             "-ar", "48000",
             "-b:a", "128k",
@@ -95,23 +95,23 @@ def transcode_video(input_path, output_dir, resolutions):
             "-hls_segment_filename", str(segment_path),
             str(playlist_path)
         ]
-        print(f"Procesando resolución {res}p...")
+        print(f"Processing resolution {res}p...")
         try:
             subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except subprocess.CalledProcessError as e:
-            messagebox.showerror("Error", f"FFmpeg falló en {res}p: {e.stderr.decode()}")
+            messagebox.showerror("Error", f"FFmpeg failed at {res}p: {e.stderr.decode()}")
             sys.exit(1)
         
-        # Añadir a la lista de master playlist
+        # Add to the master playlist
         master_playlist.append({
             "resolution": res,
             "bandwidth": bitrate_to_bandwidth(bitrate),
             "uri": f"{res}p/index.m3u8",
-            "width": res * 16 // 9,  # Asumiendo aspect ratio 16:9
+            "width": res * 16 // 9,  # Assuming aspect ratio 16:9
             "height": res
         })
     
-    # Crear master.m3u8
+    # Create master.m3u8
     master_path = output_dir / "master.m3u8"
     with open(master_path, "w") as f:
         f.write("#EXTM3U\n#EXT-X-VERSION:3\n")
@@ -120,11 +120,11 @@ def transcode_video(input_path, output_dir, resolutions):
                 f"#EXT-X-STREAM-INF:BANDWIDTH={stream['bandwidth']},RESOLUTION={stream['width']}x{stream['height']}\n"
                 f"{stream['uri']}\n"
             )
-    print("Master playlist creado.")
+    print("Master playlist created.")
     return master_path
 
 def bitrate_to_bandwidth(bitrate_str):
-    # Convierte '800k' a 800000
+    # Convert '800k' to 800000
     if bitrate_str.endswith('k'):
         return int(bitrate_str[:-1]) * 1000
     elif bitrate_str.endswith('M'):
@@ -137,45 +137,45 @@ def generate_thumbnails(input_path, output_dir, duration, num_thumbnails=256):
     thumbnails_dir.mkdir(parents=True, exist_ok=True)
     
     if num_thumbnails < 2:
-        num_thumbnails = 2  # Asegura al menos dos miniaturas
+        num_thumbnails = 2  # Ensure at least two thumbnails
     
-    # Calcular intervalos, incluyendo el primer y último frame
+    # Calculate intervals, including the first and last frame
     interval = duration / (num_thumbnails - 1)
-    epsilon = 0.1  # Aumentar el margen de seguridad para el último timestamp
-    timestamps = [0]  # Primer frame
+    epsilon = 0.1  # Increase safety margin for the last timestamp
+    timestamps = [0]  # First frame
     for i in range(1, num_thumbnails - 1):
         ts = interval * i
-        # Asegurar que el timestamp no exceda la duración
+        # Ensure the timestamp does not exceed the duration
         if ts >= duration:
             ts = duration - epsilon
         timestamps.append(ts)
     last_ts = duration - epsilon if duration > epsilon else 0
-    timestamps.append(last_ts)  # Último frame
+    timestamps.append(last_ts)  # Last frame
     
-    # FFmpeg espera timestamps en formato HH:MM:SS.milliseconds
+    # FFmpeg expects timestamps in HH:MM:SS.milliseconds format
     timestamps_formatted = [seconds_to_timestamp(ts) for ts in timestamps]
     
     for idx, ts in enumerate(timestamps_formatted, start=1):
         thumb_path = thumbnails_dir / f"thumb{idx}.webp"
-        thumbnail_size = "160x90" if idx < num_thumbnails else "120x68"  # Reducir la última miniatura
+        thumbnail_size = "160x90" if idx < num_thumbnails else "120x68"  # Reduce the last thumbnail
         cmd = [
             "ffmpeg",
             "-ss", ts,
             "-i", input_path,
             "-vframes", "1",
-            "-s", thumbnail_size,  # Tamaño de la miniatura, reducido para la última
+            "-s", thumbnail_size,  # Thumbnail size, reduced for the last one
             "-f", "webp",
-            "-y",  # Sobrescribir sin preguntar
+            "-y",  # Overwrite without asking
             str(thumb_path)
         ]
-        print(f"Generando miniatura {idx} en {ts}...")
+        print(f"Generating thumbnail {idx} at {ts}...")
         try:
             subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except subprocess.CalledProcessError as e:
-            messagebox.showerror("Error", f"FFmpeg falló al generar miniatura {idx}: {e.stderr.decode()}")
+            messagebox.showerror("Error", f"FFmpeg failed generating thumbnail {idx}: {e.stderr.decode()}")
             sys.exit(1)
     
-    print("Miniaturas generadas.")
+    print("Thumbnails generated.")
     return thumbnails_dir
 
 def seconds_to_timestamp(seconds):
@@ -185,42 +185,42 @@ def seconds_to_timestamp(seconds):
     return f"{hrs:02}:{mins:02}:{secs:06.3f}"
 
 def main():
-    print("Seleccionando el archivo de video...")
+    print("Selecting the video file...")
     input_path = Path(select_file())
     if not input_path.exists():
-        messagebox.showerror("Error", "El archivo de video seleccionado no existe.")
+        messagebox.showerror("Error", "The selected video file does not exist.")
         sys.exit(1)
     
-    print("Seleccionando la carpeta de destino...")
+    print("Selecting the destination folder...")
     output_dir = Path(select_destination())
     if not output_dir.exists():
-        messagebox.showerror("Error", "La carpeta de destino seleccionada no existe.")
+        messagebox.showerror("Error", "The selected destination folder does not exist.")
         sys.exit(1)
     
-    print("Obteniendo información del video...")
+    print("Retrieving video information...")
     width, height, duration = get_video_info(str(input_path))
-    print(f"Resolución: {width}x{height}, Duración: {duration} segundos")
+    print(f"Resolution: {width}x{height}, Duration: {duration} seconds")
     
     resolutions = determine_resolutions(height)
     if not resolutions:
-        messagebox.showerror("Error", "No se encontraron resoluciones adecuadas para el video.")
+        messagebox.showerror("Error", "No suitable resolutions found for the video.")
         sys.exit(1)
     
-    print(f"Resoluciones a procesar: {resolutions}")
+    print(f"Resolutions to process: {resolutions}")
     
-    # Crear una carpeta para el proyecto
+    # Create a project folder
     project_name = input_path.stem
     project_dir = output_dir / project_name
     project_dir.mkdir(parents=True, exist_ok=True)
     
-    print("Transcodificando el video a múltiples resoluciones...")
+    print("Transcoding the video to multiple resolutions...")
     master_playlist = transcode_video(str(input_path), project_dir, resolutions)
     
-    print("Generando miniaturas...")
+    print("Generating thumbnails...")
     generate_thumbnails(str(input_path), project_dir, duration)
     
-    print(f"Proceso completado. Archivos almacenados en: {project_dir}")
-    messagebox.showinfo("Completado", f"El procesamiento ha finalizado.\nCarpeta de salida: {project_dir}")
+    print(f"Process completed. Files stored in: {project_dir}")
+    messagebox.showinfo("Completed", f"Processing completed.\nOutput folder: {project_dir}")
 
 if __name__ == "__main__":
     main()
