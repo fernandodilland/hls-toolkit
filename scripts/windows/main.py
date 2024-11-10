@@ -61,7 +61,6 @@ def transcode_video(input_path, output_dir, resolutions):
         playlist_path = res_dir / "index.m3u8"
         segment_path = res_dir / "segment_%03d.ts"
         
-        # Determine bitrate based on resolution
         bitrate = {
             144: "800k",
             240: "400k",
@@ -77,8 +76,8 @@ def transcode_video(input_path, output_dir, resolutions):
             "ffmpeg",
             "-i", input_path,
             "-vf", f"scale=-2:{res}",
-            "-pix_fmt", "yuv420p",  # Force to 8 bits
-            "-profile:v", "high",   # Use a high H.264 profile
+            "-pix_fmt", "yuv420p",
+            "-profile:v", "high",
             "-c:a", "aac",
             "-ar", "48000",
             "-b:a", "128k",
@@ -102,16 +101,14 @@ def transcode_video(input_path, output_dir, resolutions):
             messagebox.showerror("Error", f"FFmpeg failed at {res}p: {e.stderr.decode()}")
             sys.exit(1)
         
-        # Add to the master playlist
         master_playlist.append({
             "resolution": res,
             "bandwidth": bitrate_to_bandwidth(bitrate),
             "uri": f"{res}p/index.m3u8",
-            "width": res * 16 // 9,  # Assuming aspect ratio 16:9
+            "width": res * 16 // 9,
             "height": res
         })
     
-    # Create master.m3u8
     master_path = output_dir / "master.m3u8"
     with open(master_path, "w") as f:
         f.write("#EXTM3U\n#EXT-X-VERSION:3\n")
@@ -124,7 +121,6 @@ def transcode_video(input_path, output_dir, resolutions):
     return master_path
 
 def bitrate_to_bandwidth(bitrate_str):
-    # Convert '800k' to 800000
     if bitrate_str.endswith('k'):
         return int(bitrate_str[:-1]) * 1000
     elif bitrate_str.endswith('M'):
@@ -137,35 +133,30 @@ def generate_thumbnails(input_path, output_dir, duration, num_thumbnails=256):
     thumbnails_dir.mkdir(parents=True, exist_ok=True)
     
     if num_thumbnails < 2:
-        num_thumbnails = 2  # Ensure at least two thumbnails
+        num_thumbnails = 2
     
-    # Calculate intervals, including the first and last frame
     interval = duration / (num_thumbnails - 1)
-    epsilon = 0.1  # Increase safety margin for the last timestamp
-    timestamps = [0]  # First frame
+    epsilon = 0.1
+    timestamps = [0]
     for i in range(1, num_thumbnails - 1):
-        ts = interval * i
-        # Ensure the timestamp does not exceed the duration
-        if ts >= duration:
-            ts = duration - epsilon
+        ts = min(interval * i, duration - epsilon)
         timestamps.append(ts)
     last_ts = duration - epsilon if duration > epsilon else 0
-    timestamps.append(last_ts)  # Last frame
+    timestamps.append(last_ts)
     
-    # FFmpeg expects timestamps in HH:MM:SS.milliseconds format
     timestamps_formatted = [seconds_to_timestamp(ts) for ts in timestamps]
     
     for idx, ts in enumerate(timestamps_formatted, start=1):
         thumb_path = thumbnails_dir / f"thumb{idx}.webp"
-        thumbnail_size = "160x90" if idx < num_thumbnails else "120x68"  # Reduce the last thumbnail
+        thumbnail_size = "160x90" if idx < num_thumbnails else "120x68"
         cmd = [
             "ffmpeg",
             "-ss", ts,
             "-i", input_path,
             "-vframes", "1",
-            "-s", thumbnail_size,  # Thumbnail size, reduced for the last one
+            "-s", thumbnail_size,
             "-f", "webp",
-            "-y",  # Overwrite without asking
+            "-y",
             str(thumb_path)
         ]
         print(f"Generating thumbnail {idx} at {ts}...")
@@ -208,13 +199,12 @@ def main():
     
     print(f"Resolutions to process: {resolutions}")
     
-    # Create a project folder
     project_name = input_path.stem
     project_dir = output_dir / project_name
     project_dir.mkdir(parents=True, exist_ok=True)
     
     print("Transcoding the video to multiple resolutions...")
-    master_playlist = transcode_video(str(input_path), project_dir, resolutions)
+    transcode_video(str(input_path), project_dir, resolutions)
     
     print("Generating thumbnails...")
     generate_thumbnails(str(input_path), project_dir, duration)
